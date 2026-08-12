@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     poll_interval_seconds: int = 300
     instrument: str = "EUR_USD"
+    run_once_only: bool = False  # true = un seul cycle puis exit (debug/tests manuels)
 
 
 @lru_cache

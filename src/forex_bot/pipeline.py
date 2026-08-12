@@ -1,4 +1,6 @@
 import logging
+import signal
+import time
 
 from forex_bot.brain.qwen_client import QwenBrain
 from forex_bot.broker.base import Broker
@@ -72,3 +74,44 @@ def run_once(settings: Settings) -> None:
         f"[forex-bot] {settings.instrument}: decision={decision.action} "
         f"(confiance {decision.confidence}) -> risque approuve={verdict.approved} -> {order_status}"
     )
+
+
+class ShutdownHandler:
+    """Permet un arret propre sur SIGTERM/SIGINT (ex: `docker stop`, Ctrl+C):
+    le cycle en cours se termine avant l'arret, pour ne jamais couper un
+    ordre a moitie envoye.
+    """
+
+    def __init__(self) -> None:
+        self.requested = False
+
+    def request_shutdown(self, signum: int, frame) -> None:
+        logger.info("Signal d'arret recu (%s), arret apres le cycle en cours...", signum)
+        self.requested = True
+
+
+def run_forever(settings: Settings, shutdown: ShutdownHandler | None = None, sleep_fn=time.sleep) -> None:
+    """Boucle continue: un cycle toutes les `poll_interval_seconds`.
+
+    Une erreur pendant un cycle est loguee mais n'arrete pas la boucle - un
+    incident ponctuel (API indisponible, etc.) ne doit pas stopper le bot.
+    """
+    shutdown = shutdown or ShutdownHandler()
+    signal.signal(signal.SIGTERM, shutdown.request_shutdown)
+    signal.signal(signal.SIGINT, shutdown.request_shutdown)
+
+    logger.info("Boucle continue demarree (intervalle=%ss)", settings.poll_interval_seconds)
+    while not shutdown.requested:
+        try:
+            run_once(settings)
+        except Exception:
+            logger.exception("Erreur non geree pendant le cycle, on continue a la prochaine iteration")
+
+        # On dort par pas d'une seconde plutot qu'un seul sleep(poll_interval_seconds)
+        # pour reagir vite a un signal d'arret meme avec un intervalle long.
+        for _ in range(settings.poll_interval_seconds):
+            if shutdown.requested:
+                break
+            sleep_fn(1)
+
+    logger.info("Boucle arretee proprement.")

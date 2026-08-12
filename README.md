@@ -18,8 +18,9 @@ Agent de trading forex autonome : pipeline decisionnel news + prix -> LLM (Qwen)
 4. ✅ **Moteur de risque** — la decision du LLM n'est qu'un avis ; `RiskEngine` verifie position
    deja ouverte, blackout news a fort impact, calcule stop-loss et taille de position (risque
    fixe % du solde), puis **passe reellement l'ordre sur le compte practice** si tout est vert.
-5. ⬜ **Automatisation & monitoring** — boucle de scheduling continue, deploiement VPS,
-   durcissement du Dockerfile/compose.
+5. ✅ **Automatisation & monitoring** — boucle continue (`run_forever`, arret propre sur
+   Ctrl+C/`docker stop`), image Docker en utilisateur non-root, `restart: unless-stopped`
+   pour tourner en continu sur un VPS.
 
 Ce depot contient un pipeline complet et fonctionnel de bout en bout, avec des implementations
 de secours sures partout ou une dependance externe (OANDA, OpenRouter, Telegram, calendrier)
@@ -101,3 +102,23 @@ docker run --env-file .env forex-bot
 # ou
 docker compose up --build
 ```
+
+## Deploiement VPS (etape 5)
+
+Par defaut le bot tourne en **boucle continue** (`RUN_ONCE_ONLY=false`) : un cycle toutes
+les `POLL_INTERVAL_SECONDS` (5 min par defaut), jusqu'a recevoir `SIGTERM`/`SIGINT` (le
+cycle en cours se termine toujours avant l'arret, pour ne jamais couper un ordre a moitie
+envoye). Pour debugger un seul cycle manuellement, mets `RUN_ONCE_ONLY=true`.
+
+Sur un VPS :
+
+```bash
+git clone <ce-repo> && cd Forex-bot
+cp .env.example .env
+# renseigner .env (OANDA, OpenRouter, Telegram...)
+docker compose up -d --build
+docker compose logs -f    # suivre les cycles en direct
+```
+
+`restart: unless-stopped` (dans `docker-compose.yml`) relance automatiquement le conteneur
+apres un crash ou un reboot du VPS, sauf si tu l'as arrete toi-meme (`docker compose stop`).
