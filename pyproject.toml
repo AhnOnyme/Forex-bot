@@ -10,6 +10,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "oandapyV20>=0.7.2",
     "six>=1.16",  # dependance transitive d'oandapyV20, non declaree dans son package
+    "openai>=1.30",
 ]
 
 [project.optional-dependencies]

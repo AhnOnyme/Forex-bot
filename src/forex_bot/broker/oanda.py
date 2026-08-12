@@ -5,6 +5,8 @@ from typing import Any
 import oandapyV20
 from oandapyV20.endpoints.accounts import AccountSummary
 from oandapyV20.endpoints.instruments import InstrumentsCandles
+from oandapyV20.endpoints.orders import OrderCreate
+from oandapyV20.endpoints.positions import OpenPositions
 from oandapyV20.exceptions import V20Error
 
 from forex_bot.broker.base import Broker
@@ -64,12 +66,32 @@ class OandaBroker(Broker):
         return candles
 
     def get_open_positions(self) -> list[dict[str, Any]]:
-        # TODO (etape 4): appeler l'endpoint /accounts/{accountID}/openPositions.
-        raise NotImplementedError("OandaBroker.get_open_positions n'est pas encore implemente")
+        request = OpenPositions(accountID=self._settings.oanda_account_id)
+        try:
+            self._client.request(request)
+        except V20Error as exc:
+            raise RuntimeError(f"Echec de recuperation des positions ouvertes OANDA: {exc}") from exc
+        return request.response.get("positions", [])
 
     def place_order(self, instrument: str, units: float, stop_loss: float | None = None) -> dict[str, Any]:
-        # TODO (etape 4): appeler l'endpoint /accounts/{accountID}/orders.
-        raise NotImplementedError("OandaBroker.place_order n'est pas encore implemente")
+        # Convention OANDA : units positif = achat, negatif = vente. C'est a
+        # l'appelant (risk engine / pipeline) d'appliquer le signe selon BUY/SELL.
+        order: dict[str, Any] = {
+            "type": "MARKET",
+            "instrument": instrument,
+            "units": str(int(units)),
+            "timeInForce": "FOK",
+            "positionFill": "DEFAULT",
+        }
+        if stop_loss is not None:
+            order["stopLossOnFill"] = {"price": f"{stop_loss:.5f}"}
+
+        request = OrderCreate(accountID=self._settings.oanda_account_id, data={"order": order})
+        try:
+            self._client.request(request)
+        except V20Error as exc:
+            raise RuntimeError(f"Echec du passage d'ordre OANDA pour {instrument}: {exc}") from exc
+        return request.response
 
     def get_account_summary(self) -> dict[str, Any]:
         request = AccountSummary(accountID=self._settings.oanda_account_id)

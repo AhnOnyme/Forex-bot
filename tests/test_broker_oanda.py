@@ -19,20 +19,42 @@ CANDLES_RESPONSE = {
 
 ACCOUNT_RESPONSE = {"balance": "100000.0000", "currency": "USD", "id": "101-001-1234567-001"}
 
+POSITIONS_RESPONSE = [
+    {"instrument": "EUR_USD", "long": {"units": "100"}, "short": {"units": "0"}},
+]
+
+ORDER_RESPONSE = {"orderFillTransaction": {"id": "42", "instrument": "EUR_USD"}}
+
 
 class FakeApiClient:
-    def __init__(self, candles_response=None, account_response=None, raise_error=False):
+    def __init__(
+        self,
+        candles_response=None,
+        account_response=None,
+        positions_response=None,
+        order_response=None,
+        raise_error=False,
+    ):
         self._candles_response = candles_response
         self._account_response = account_response
+        self._positions_response = positions_response
+        self._order_response = order_response
         self._raise_error = raise_error
+        self.last_endpoint = None
 
     def request(self, endpoint):
+        self.last_endpoint = endpoint
         if self._raise_error:
             raise V20Error(400, "boom")
-        if type(endpoint).__name__ == "InstrumentsCandles":
+        endpoint_type = type(endpoint).__name__
+        if endpoint_type == "InstrumentsCandles":
             endpoint.response = self._candles_response
-        elif type(endpoint).__name__ == "AccountSummary":
+        elif endpoint_type == "AccountSummary":
             endpoint.response = {"account": self._account_response}
+        elif endpoint_type == "OpenPositions":
+            endpoint.response = {"positions": self._positions_response}
+        elif endpoint_type == "OrderCreate":
+            endpoint.response = self._order_response
 
 
 def _settings(**overrides) -> Settings:
@@ -71,6 +93,34 @@ def test_get_account_summary_maps_response():
 
     assert summary["currency"] == "USD"
     assert summary["balance"] == "100000.0000"
+
+
+def test_get_open_positions_maps_response():
+    broker = OandaBroker(_settings(), api_client=FakeApiClient(positions_response=POSITIONS_RESPONSE))
+
+    positions = broker.get_open_positions()
+
+    assert positions == POSITIONS_RESPONSE
+
+
+def test_place_order_sends_units_and_stop_loss():
+    fake_client = FakeApiClient(order_response=ORDER_RESPONSE)
+    broker = OandaBroker(_settings(), api_client=fake_client)
+
+    result = broker.place_order("EUR_USD", units=-1000, stop_loss=1.0945)
+
+    assert result == ORDER_RESPONSE
+    sent_order = fake_client.last_endpoint.data["order"]
+    assert sent_order["instrument"] == "EUR_USD"
+    assert sent_order["units"] == "-1000"
+    assert sent_order["stopLossOnFill"]["price"] == "1.09450"
+
+
+def test_place_order_wraps_v20_error():
+    broker = OandaBroker(_settings(), api_client=FakeApiClient(raise_error=True))
+
+    with pytest.raises(RuntimeError):
+        broker.place_order("EUR_USD", units=1000)
 
 
 def test_parse_oanda_time_truncates_nanoseconds():

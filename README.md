@@ -9,19 +9,48 @@ Agent de trading forex autonome : pipeline decisionnel news + prix -> LLM (Qwen)
 
 ## Roadmap en 5 etapes
 
-1. **Paper trading** — connexion a un compte OANDA practice, aucune perte possible.
-2. **Pipeline de donnees** — recuperation des bougies OHLCV (OANDA) et des news/calendrier
-   economique propres (source institutionnelle, pas de flux social bruyant).
-3. **Le "cerveau"** — un modele open-weight (Qwen, via OpenRouter) analyse les donnees et
-   repond en JSON strict : `{"action": "BUY"|"SELL"|"HOLD", "confidence": 1-5, "reason": "..."}`.
-4. **Moteur de risque** — la decision du LLM n'est qu'un avis ; un moteur Python verifie
-   positions ouvertes, stop-loss, blackout news avant de valider un ordre simule.
-5. **Automatisation & monitoring** — deploiement Docker sur un VPS, notifications Telegram
-   a chaque decision prise.
+1. ✅ **Paper trading** — connexion a un compte OANDA practice, aucune perte possible.
+2. ✅ **Pipeline de donnees** — recuperation des bougies OHLCV (OANDA) et des news/calendrier
+   economique (flux ForexFactory, filtre sur les devises de l'instrument trade).
+3. ✅ **Le "cerveau"** — Qwen (via OpenRouter, SDK `openai`) analyse les donnees et repond en
+   JSON strict : `{"action": "BUY"|"SELL"|"HOLD", "confidence": 1-5, "reason": "..."}`. Fallback
+   `HOLD` sur toute reponse non exploitable (pas de cle, erreur API, JSON invalide).
+4. ✅ **Moteur de risque** — la decision du LLM n'est qu'un avis ; `RiskEngine` verifie position
+   deja ouverte, blackout news a fort impact, calcule stop-loss et taille de position (risque
+   fixe % du solde), puis **passe reellement l'ordre sur le compte practice** si tout est vert.
+5. ⬜ **Automatisation & monitoring** — boucle de scheduling continue, deploiement VPS,
+   durcissement du Dockerfile/compose.
 
-Ce depot contient pour l'instant le **squelette du projet** (structure, contrats de donnees,
-pipeline cable de bout en bout avec des implementations de secours sures). Les etapes 1 a 5
-seront remplies progressivement dans les fichiers correspondants (voir les `TODO` dans le code).
+Ce depot contient un pipeline complet et fonctionnel de bout en bout, avec des implementations
+de secours sures partout ou une dependance externe (OANDA, OpenRouter, Telegram, calendrier)
+est absente ou indisponible — voir la section "Robustesse" ci-dessous.
+
+## Robustesse (comportement de secours)
+
+Chaque etage du pipeline peut fonctionner meme si sa dependance externe n'est pas configuree
+ou est temporairement indisponible, plutot que de faire planter le cycle :
+
+| Etage | Sans configuration / en cas d'erreur |
+|---|---|
+| Prix (OANDA) | Bougie factice, warning logue |
+| News (ForexFactory) | News factice, warning logue |
+| Cerveau (Qwen) | Decision `HOLD`, raison expliquee |
+| Risque | Refuse l'ordre (jamais d'approbation par defaut) |
+| Telegram | Message juste logue, pas envoye |
+
+## Gestion du risque (etape 4) — comment ca marche
+
+Quand le brain propose `BUY` ou `SELL`, `RiskEngine` (dans `src/forex_bot/risk/engine.py`)
+verifie dans l'ordre :
+1. Pas de news a fort impact dans les `RISK_NEWS_BLACKOUT_MINUTES` minutes (defaut 15).
+2. Pas de position deja ouverte sur l'instrument.
+3. Calcule un stop-loss a `RISK_STOP_LOSS_PCT` (defaut 0.5%) du prix d'entree.
+4. Calcule la taille de position : `(solde du compte * RISK_PER_TRADE_PCT) / distance du stop-loss`
+   — une regle de money management classique : on ne risque qu'un pourcentage fixe du solde
+   par trade, quelle que soit la distance du stop.
+
+Si tout passe, l'ordre est reellement envoye sur le compte practice OANDA avec le stop-loss
+attache. Ces 3 parametres sont ajustables dans `.env`.
 
 ## Structure du projet
 
@@ -56,8 +85,7 @@ python -m forex_bot.main
 
 Sans aucune cle API configuree, le pipeline tourne quand meme de bout en bout avec des
 implementations de secours (decision `HOLD` par defaut, aucun ordre passe, notification
-juste loggee) — c'est le comportement attendu tant que les etapes 1 a 5 ne sont pas
-completement implementees.
+juste loggee) — voir la section "Robustesse" plus haut.
 
 ## Tests
 
