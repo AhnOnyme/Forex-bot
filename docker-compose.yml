@@ -1,0 +1,5 @@
+services:
+  forex-bot:
+    build: .
+    env_file:
+      - .env
