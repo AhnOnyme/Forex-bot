@@ -8,6 +8,8 @@ dependencies = [
     "pydantic>=2.5",
     "pydantic-settings>=2.1",
     "python-dotenv>=1.0",
+    "oandapyV20>=0.7.2",
+    "six>=1.16",  # dependance transitive d'oandapyV20, non declaree dans son package
 ]
 
 [project.optional-dependencies]

@@ -7,8 +7,8 @@ from forex_bot.config import Settings
 def settings() -> Settings:
     return Settings(
         _env_file=None,
-        oanda_api_key="test-key",
-        oanda_account_id="test-account",
+        oanda_api_key=None,
+        oanda_account_id=None,
         llm_api_key=None,
         telegram_bot_token=None,
         telegram_chat_id=None,

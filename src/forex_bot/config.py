@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     oanda_api_key: str | None = None
     oanda_account_id: str | None = None
     oanda_environment: Literal["practice", "live"] = "practice"
+    oanda_granularity: str = "M15"
+    oanda_candle_count: int = 50
 
     # LLM brain (OpenRouter, Qwen model)
     llm_api_key: str | None = None
@@ -20,6 +22,9 @@ class Settings(BaseSettings):
     # Telegram notifications
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+
+    # News / calendrier economique (flux ForexFactory, pas de cle requise)
+    news_calendar_url: str = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 
     # App behavior
     log_level: str = "INFO"
